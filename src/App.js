@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  Box,
+  Button,
+  Container,
   HStack,
   Input,
-  Button,
-  Box,
-  Container,
   VStack,
 } from "@chakra-ui/react";
 import Message from "./Components/Message";
@@ -16,80 +16,114 @@ import {
   signInWithPopup,
   signOut,
 } from "firebase/auth";
-import {getFirestore,addDoc,collection, serverTimestamp} from "firebase/firestore"
-
+import {
+  getFirestore,
+  addDoc,
+  collection,
+  serverTimestamp,
+  onSnapshot,
+  query,
+  orderBy,
+} from "firebase/firestore";
 
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const login = () => {
+const loginHandler = () => {
   const provider = new GoogleAuthProvider();
   signInWithPopup(auth, provider);
 };
 
-const logout =()=>{
-  signOut(auth);
-}
+const logoutHandler = () => signOut(auth);
 
+function App() {
+  const [user, setUser] = useState(false);
+  const [message, setMessage] = useState("");
+  const [messages, setMessages] = useState([]);
 
-const App = () => {
-  const [User, setUser] = useState(false);
-  const [message,setMessage]=useState("");
-  const [messages,setMessages]=useState([]);
+  const divForScroll = useRef(null);
 
- 
-  const submit =async(e)=>{
+  const submitHandler = async (e) => {
     e.preventDefault();
+
     try {
-      await addDoc(collection(db,"Messages"),{
-        text:message,
-        uid:User.uid,
-        uri:User.photoURL,
-        createdAt:serverTimestamp()
-      });
       setMessage("");
 
+      await addDoc(collection(db, "Messages"), {
+        text: message,
+        uid: user.uid,
+        uri: user.photoURL,
+        createdAt: serverTimestamp(),
+      });
+
+      divForScroll.current.scrollIntoView({ behavior: "smooth" });
     } catch (error) {
       alert(error);
     }
-  }
+  };
+
   useEffect(() => {
-   const unsubscibe = onAuthStateChanged(auth, (data) => {
+    const q = query(collection(db, "Messages"), orderBy("createdAt", "asc"));
+
+    const unsubscribe = onAuthStateChanged(auth, (data) => {
       setUser(data);
     });
 
-    return()=>{
-      unsubscibe();
+    const unsubscribeForMessage = onSnapshot(q, (snap) => {
+      setMessages(
+        snap.docs.map((item) => {
+          const id = item.id;
+          return { id, ...item.data() };
+        })
+      );
+    });
+
+    return () => {
+      unsubscribe();
+      unsubscribeForMessage();
     };
-  });
+  }, []);
+
   return (
-    <Box bg={"green.100"}>
-      {User ? (
-        <Container h={"100vh"} bg={"white"}>
-          <VStack
-            bg={"gray.100"}
-            w={"full"}
-            h={"full"}
-            paddingY={"1"}
-            overflowY={"auto"}
-          >
-            <Button onClick={logout} colorScheme="red" w={"full"} bg={"blue"}>
+    <Box bg={"black"} >
+      {user ? (
+        <Container h={"100vh"} bg={"blue.200"} border={"8px"}>
+          <VStack h="full" paddingY={"4"}>
+            <Button onClick={logoutHandler} colorScheme={"red"} w={"full"} bg={"blue"}>
               Logout
             </Button>
 
-            <VStack h={"full"} width={"full"}>
-             {
-              messages.map(item=>(
+            <VStack
+              h="full"
+              w={"full"}
+              overflowY="auto"
+              css={{
+                "&::-webkit-scrollbar": {
+                  display: "none",
+                },
+              }}
+            >
+              {messages.map((item) => (
                 <Message
-                key={item.id} user={item.uri===User.uri?"me":"other"} text={item.text} uri={item.uri}/>
-              ))
-             }
+                  key={item.id}
+                  user={item.uid === user.uid ? "me" : "other"}
+                  text={item.text}
+                  uri={item.uri}
+                />
+              ))}
+
+              <div ref={divForScroll}></div>
             </VStack>
 
-            <form onSubmit={submit} onChange={(e)=>setMessage(e.target.value)} style={{ width: "100%", marginTop: "600px" }}>
+            <form onSubmit={submitHandler} style={{ width: "100%" }}>
               <HStack>
-                <Input value={message} placeholder="Enter a message" />
-                <Button type="submit" colorScheme={"purple"}>
+                <Input
+                bg="white"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder="Enter a Message..."
+                />
+                <Button colorScheme={"purple"} type="submit">
                   Send
                 </Button>
               </HStack>
@@ -97,18 +131,14 @@ const App = () => {
           </VStack>
         </Container>
       ) : (
-        <VStack h={"100vh"} justifyContent={"center"} bg={"blue.200"}>
-          <Button
-            onClick={login}
-            colorScheme="green"
-            border={"1px solid black"}
-          >
-            Sign in with goolgle
+        <VStack bg="white" justifyContent={"center"} h="100vh">
+          <Button onClick={loginHandler} colorScheme={"purple"}>
+            Sign In With Google
           </Button>
         </VStack>
       )}
     </Box>
   );
-};
+}
 
 export default App;
